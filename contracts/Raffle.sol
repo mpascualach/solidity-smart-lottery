@@ -57,6 +57,7 @@ contract Raffle is VRFConsumerBaseV2, AutomationCompatibleInterface {
         i_subscriptionId = subscriptionId;
         i_entranceFee = entranceFee;
         s_raffleState = RaffleState.OPEN;
+        s_lastTimeStamp = block.timestamp;
         i_callbackGasLimit = callbackGasLimit;
     }
 
@@ -84,7 +85,7 @@ contract Raffle is VRFConsumerBaseV2, AutomationCompatibleInterface {
         bool hasPlayers = s_players.length > 0;
         bool hasBalance = address(this).balance > 0;
         upkeepNeeded = (timePassed && isOpen && hasBalance && hasPlayers);
-        return (upkeepNeeded, "0x0");
+        // return (isOpen && timePassed && hasPlayers && hasBalance);
     }
 
     /**
@@ -110,6 +111,7 @@ contract Raffle is VRFConsumerBaseV2, AutomationCompatibleInterface {
             i_callbackGasLimit,
             NUM_WORDS
         );
+        // the below event is redundant because requestRandomWords already emits an event of this kind
         emit RequestRaffleWinner(requestId);
     }
 
@@ -117,24 +119,28 @@ contract Raffle is VRFConsumerBaseV2, AutomationCompatibleInterface {
         // require(msg.value >= i_entranceFee, "Not enough value sent");
         // require(s_raffleState == RaffleState.OPEN, "Raffle is not open");
         if (msg.value < i_entranceFee) {
+            // if not enough ETH Has been sent
             revert Raffle__SendMoreToEnterRaffle();
         }
         if (s_raffleState != RaffleState.OPEN) {
+            // if raffle isn't open yet
             revert Raffle__RaffleNotOpen();
         }
-        s_players.push(payable(msg.sender));
-        // Emit an event when we update a dynamic array or mapping
-        // Named events with the function name reversed
-        emit RaffleEnter(msg.sender);
+        s_players.push(payable(msg.sender)); // push current user into array of raffle participants
+        emit RaffleEnter(msg.sender); // emit event suggesting someone has entered the raffle
     }
 
     function fulfillRandomWords(
         uint256 /* requestId */,
         uint256[] memory randomWords
     ) internal override {
-        uint256 indexOfWinner = randomWords[0] % s_players.length;
-        address payable recentWinner = s_players[indexOfWinner];
-        s_recentWinner = recentWinner;
+        /* select random winner */
+        uint256 indexOfWinner = randomWords[0] % s_players.length; // select random number
+        address payable recentWinner = s_players[indexOfWinner]; // select winner from players array (with index equal to indexOfWinner)
+        s_recentWinner = recentWinner; // announce winner
+        s_players = new address payable[](0); // clear players array
+        s_raffleState = RaffleState.OPEN; // reopen raffle
+        s_lastTimeStamp = block.timestamp; // set lastTimeStamp to current timeStamp
         (bool success, ) = recentWinner.call{value: address(this).balance}("");
         // require(success, "Transfer failed");
         if (!success) {
@@ -169,5 +175,13 @@ contract Raffle is VRFConsumerBaseV2, AutomationCompatibleInterface {
 
     function getRaffleState() public view returns (RaffleState) {
         return s_raffleState;
+    }
+
+    function getLastTimeStamp() public view returns (uint256) {
+        return s_lastTimeStamp;
+    }
+
+    function getNumberOfPlayers() public view returns (uint256) {
+        return s_players.length;
     }
 }
