@@ -8,4 +8,7 @@
 !.yarn/versions
 
 node_modules
+
 .env
+
+./coverage
